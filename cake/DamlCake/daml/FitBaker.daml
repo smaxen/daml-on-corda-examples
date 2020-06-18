@@ -18,7 +18,23 @@ template CakeOffer
 
     controller customer can
 
-      Accept: ContractId Cake
+      AcceptOffer: ContractId Cake
+        do
+          create Cake with baker, cakeType = Chocolate, owner = customer
+
+template CakeRequest
+
+  with
+    baker: Party
+    cakeType: CakeType
+    customer: Party
+  
+  where
+    signatory customer
+
+    controller baker can
+
+      AcceptRequest: ContractId Cake
         do
           create Cake with baker, cakeType = Chocolate, owner = customer
 
@@ -38,8 +54,8 @@ template Cake
         do 
           return ()
 
-cakeTest : Scenario ()
-cakeTest = do
+offerTest : Scenario ()
+offerTest = do
   
   baker <- getParty "Fit Baker Bakery"
   customer <- getParty "Ella"
@@ -48,10 +64,26 @@ cakeTest = do
   offerCid <- submit baker do create CakeOffer with baker, cakeType = Chocolate, customer
 
   -- Accept
-  cakeCid <- submit customer do exercise offerCid Accept
+  cakeCid <- submit customer do exercise offerCid AcceptOffer
 
   -- Eat
   submit customer do exercise cakeCid Eat
 
   return ()
 
+requestTest : Scenario ()
+requestTest = do
+  
+  baker <- getParty "Fit Baker Bakery"
+  customer <- getParty "Christopher"
+
+  -- Request
+  offerCid <- submit customer do create CakeRequest with baker, cakeType = Chocolate, customer
+
+  -- Accept
+  cakeCid <- submit baker do exercise offerCid AcceptRequest
+
+  -- Eat
+  submit customer do exercise cakeCid Eat
+
+  return ()

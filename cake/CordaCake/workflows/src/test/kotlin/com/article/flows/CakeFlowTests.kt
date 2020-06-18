@@ -29,6 +29,7 @@ class CakeFlowTests {
     private val customer = network.createNode()
 
     init {
+        baker.registerInitiatedFlow(CakeFlow.RequestResponder::class.java)
         customer.registerInitiatedFlow(CakeFlow.BakeResponder::class.java)
         baker.registerInitiatedFlow(CakeFlow.EatResponder::class.java)
     }
@@ -46,8 +47,9 @@ class CakeFlowTests {
     }
 
     @Test
-    fun bakeAndEat() {
-        val cakeRef = runFlow(baker, CakeFlow.Bake(CakeType.Chocolate, customer.info.singleIdentity()))
+    fun requestBakeAndEat() {
+        val requestRef = runFlow(customer, CakeFlow.Request(CakeType.Chocolate, baker.info.singleIdentity()))
+        val cakeRef = runFlow(baker, CakeFlow.Bake(requestRef))
         runFlow(customer, CakeFlow.Eat(cakeRef))
     }
 
