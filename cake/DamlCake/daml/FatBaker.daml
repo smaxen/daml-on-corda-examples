@@ -1,0 +1,47 @@
+
+
+daml 1.2
+
+module FatBaker where
+
+data CakeType = Chocolate | Cheese| Banana | Eccles | UpsideDown deriving (Eq, Show)
+
+template Cake
+
+  with
+    baker: Party
+    cakeType: CakeType
+    customer: Party
+  
+  where
+    signatory customer
+
+    controller customer can
+
+      Eat: ()
+        do
+          return ()
+
+fatBakerTest : Scenario ()
+fatBakerTest = do
+  
+  baker <- getParty "Fat Baker Bakery"
+
+  -- Bake
+  cakeCid <- submit baker do create Cake with baker, cakeType = Chocolate, customer = baker
+
+  -- Eat
+  submit baker do exercise cakeCid Eat
+
+  return ()
+
+poorBakerTest : Scenario ()
+poorBakerTest = do
+  
+  baker <- getParty "Poor Baker Bakery"
+  customer <- getParty "Ella"
+
+  -- Cannot bake
+  submitMustFail baker do create Cake with baker, cakeType = Chocolate, customer 
+
+  return ()

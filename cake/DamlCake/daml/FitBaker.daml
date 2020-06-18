@@ -1,0 +1,57 @@
+
+
+daml 1.2
+
+module FitBaker where
+
+data CakeType = Chocolate | Cheese| Banana | Eccles | UpsideDown deriving (Eq, Show)
+
+template CakeOffer
+
+  with
+    baker: Party
+    cakeType: CakeType
+    customer: Party
+  
+  where
+    signatory baker
+
+    controller customer can
+
+      Accept: ContractId Cake
+        do
+          create Cake with baker, cakeType = Chocolate, owner = customer
+
+template Cake
+
+  with
+    cakeType: CakeType
+    owner: Party
+    baker: Party  
+  
+  where
+    signatory owner
+
+    controller owner can
+
+      Eat : ()
+        do 
+          return ()
+
+cakeTest : Scenario ()
+cakeTest = do
+  
+  baker <- getParty "Fit Baker Bakery"
+  customer <- getParty "Ella"
+
+  -- Offer
+  offerCid <- submit baker do create CakeOffer with baker, cakeType = Chocolate, customer
+
+  -- Accept
+  cakeCid <- submit customer do exercise offerCid Accept
+
+  -- Eat
+  submit customer do exercise cakeCid Eat
+
+  return ()
+

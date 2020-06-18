@@ -1,0 +1,11 @@
+sdk-version: 1.2.0
+name: cake
+version: 1.0.0
+source: daml/Main.daml
+scenario: Main:mainScenario
+parties:
+- Alice
+- Bob
+dependencies:
+- daml-prim
+- daml-stdlib
