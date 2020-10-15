@@ -1,0 +1,195 @@
+
+{-# LANGUAGE ApplicativeDo #-}
+
+module Issuance where
+
+import Daml.Script
+import DA.Date
+
+template Proposal 
+  with
+    promoter: Party
+    venueOwner: Party
+    artist: Party
+    signatories: [Party]
+    eventDate: Date
+    seats: Int
+  where
+    signatory signatories
+
+    controller venueOwner can
+      VenueAccept: ContractId Proposal
+        do  
+          create this with signatories = venueOwner :: signatories
+
+    controller artist can
+      ArtistAccept: ContractId Proposal
+        do  
+          create this with signatories = artist :: signatories  
+
+    controller promoter can
+      Confirm: (ContractId Event, ContractId EventTickets)
+        do  
+          event <- create Event with 
+            promoter
+            venueOwner
+            artist
+            eventDate
+            seats
+
+          eventTickets <- create EventTickets with 
+              promoter
+              venueOwner
+              artist
+              event
+              seatsAvailable = seats
+
+          pure (event, eventTickets)
+                   
+template Event
+  with
+    promoter: Party
+    venueOwner: Party
+    artist: Party
+    eventDate: Date
+    seats: Int
+  where
+    signatory [promoter, venueOwner, artist]  -- Legit event
+
+template EventTickets
+  with
+    promoter: Party
+    venueOwner: Party
+    artist: Party
+    event: ContractId Event
+    seatsAvailable: Int
+  where
+    signatory [promoter, venueOwner, artist]  -- So promoter cannot duplicate    
+
+    controller promoter can
+      Allocate: (ContractId DistributionAgreement, ContractId EventTickets) 
+        with
+          distributor: Party
+          allocation: Int
+        do
+          assert (seatsAvailable >= allocation)
+
+          agreement <- create DistributionAgreement 
+            with
+              promoter
+              distributor
+              event
+              seatsAvailable = allocation
+          eventTickets <- create this 
+            with 
+              seatsAvailable = seatsAvailable - allocation
+          pure (agreement, eventTickets)
+
+      
+template DistributionAgreement
+  with
+    promoter: Party
+    distributor: Party
+    event: ContractId Event
+    seatsAvailable: Int
+  where
+    signatory promoter
+
+    controller distributor can
+
+      Sell: ContractId DistributionAgreement
+        with
+          request: TicketRequest
+        do
+          assert (promoter == request.promoter)
+          assert (event == request.event)
+          assert (seatsAvailable >= request.ticketsRequested)
+          create this with seatsAvailable = seatsAvailable - request.ticketsRequested
+
+
+template TicketRequest 
+  with
+    requester: Party
+    distributor: Party
+    promoter: Party
+    event: ContractId Event   -- Assume this UUID is published off ledger, does not need to be disclosed
+    ticketsRequested: Int
+  where
+    signatory requester
+
+    controller distributor can
+
+      Fulfill: (ContractId Ticket, ContractId DistributionAgreement)
+        with
+          agreement: ContractId DistributionAgreement
+        do
+          newAgreement <- exercise agreement Sell with request = this
+          ticket <- create Ticket
+            with
+              owner = requester
+              distributor
+              event
+              admit = ticketsRequested
+          pure (ticket, newAgreement)
+
+template Ticket
+  with
+    owner: Party
+    distributor: Party
+    event: ContractId Event
+    admit: Int
+  where
+    signatory [owner, distributor]
+
+
+issuanceTest : Script ()
+issuanceTest = script do
+  
+  -- Parties
+  venueOwner <- allocateParty "O2 Arena Bookings"
+  artist <- allocateParty "The Killers"
+  promoter <- allocateParty "Shark Events"
+  distributor <- allocateParty "Ticket Cow"
+  killerFan1 <- allocateParty "Aveage Joe"
+  killerFan2 <- allocateParty "Unusual Joe"
+
+  proposal0 <- submit promoter do 
+    createCmd Proposal with  
+      promoter
+      venueOwner 
+      artist
+      signatories = [promoter] 
+      eventDate = (date 2020 Oct 15) 
+      seats = 5000
+
+  proposal1 <- submit venueOwner do exerciseCmd proposal0 VenueAccept
+
+  proposal2 <- submit artist do exerciseCmd proposal1 ArtistAccept
+
+  (event, eventTickets0) <- submit promoter do exerciseCmd proposal2 Confirm
+
+  (agreement0, eventTickets1) <- submit promoter do exerciseCmd eventTickets0 Allocate with distributor, allocation = 1000
+
+  request1 <- submit killerFan1 do 
+    createCmd TicketRequest 
+      with 
+        requester = killerFan1
+        distributor
+        promoter
+        event
+        ticketsRequested = 4
+
+  request2 <- submit killerFan2 do 
+    createCmd TicketRequest 
+      with 
+        requester = killerFan2
+        distributor
+        promoter
+        event
+        ticketsRequested = 6
+
+  (ticket0, agreement1) <- submit distributor do exerciseCmd request1 Fulfill with agreement = agreement0
+  (ticket1, agreement2) <- submit distributor do exerciseCmd request2 Fulfill with agreement = agreement1
+  
+  pure ()
+

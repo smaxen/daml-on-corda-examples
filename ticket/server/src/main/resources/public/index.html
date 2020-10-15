@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>noScalping</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+          integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css"
+          integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"
+            integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa"
+            crossorigin="anonymous"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.0-rc.1/angular.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/2.2.0/ui-bootstrap-tpls.min.js"></script>
+    <script src="js/angular-module.js"></script>
+</head>
+<body ng-app="noScalpAppModule" ng-controller="noScalpAppController as noScalpApp">
+<nav class="navbar navbar-default">
+    <div class="container-fluid">
+        <div class="navbar-header">
+            <a class="navbar-brand" href="#">{{noScalpApp.thisNode}}</a>
+        </div>
+        <button ng-click="noScalpApp.openModal()" type="button" class="btn btn-primary navbar-btn">Distribute tickets</button>
+    </div>
+</nav>
+<script type="text/ng-template" id="noScalpAppModal.html">
+    <div class="modal-header">
+        <h4 class="modal-title">Add new distribution</h4>
+    </div>
+    <form>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="toDistributor" class="control-label">To distributor:</label>
+                <select ng-model="modalInstance.form.toDistributor" class="form-control" id="toDistributor"
+                        ng-options="peer as peer for peer in modalInstance.peers">
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="tickets" class="control-label">Ticket quantity:</label>
+                <input type="text" ng-model="modalInstance.form.tickets" class="form-control" id="tickets">
+            </div>
+            <div class="form-group">
+                <label for="showname" class="control-label">Event name:</label>
+                <input type="text" ng-model="modalInstance.form.showname" class="form-control" id="showname">
+            </div>
+            <div ng-show="modalInstance.formError" class="form-group">
+                <div class="alert alert-danger" role="alert">
+                    <span class="glyphicon glyphicon-exclamation-sign" aria-hidden="true"></span>
+                    <span class="sr-only">Error:</span>
+                    Enter valid distribution parameters
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button ng-click="modalInstance.cancel()" type="button" class="btn btn-default">Close</button>
+            <button ng-click="modalInstance.create()" type="button" class="btn btn-primary">Create distribution</button>
+        </div>
+    </form>
+</script>
+<script type="text/ng-template" id="messageContent.html">
+    <div class="modal-body" id="modal-body">
+        {{ modalInstanceTwo.message }}
+    </div>
+</script>
+
+<div class="row">
+    <div class="col-md-1"></div>
+    <div class="col-md-10">
+        <div class="panel-group" id="accordion">
+            <div class="panel">
+                <div class="panel-primary">
+                    <div class="panel-heading">
+                        <h4 class="panel-title">
+                            Registered distributions:
+                        </h4>
+                    </div>
+                </div>
+            </div>
+                    <div ng-show="!noScalpApp.distributions.length" class="panel-body">Hit "Distribute tickets" to register ticket distribution.</div>
+                    <div ng-repeat="distribution in noScalpApp.distributions" class="panel panel-default">
+                        <div class="panel-body">
+                            <ul>
+                                <li>Tickets: {{distribution.ticket}}</li>
+                                <li>Event name: {{distribution.event}}</li>
+                                <li>Distributor: {{distribution.toDistributor}}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-1"></div>
+</div>
+
+</body>
+</html>

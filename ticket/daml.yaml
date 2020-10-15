@@ -1,0 +1,10 @@
+sdk-version: 1.5.0
+name: ticket
+source: daml
+parties:
+  - Alice
+  - Bob
+version: 0.0.1
+dependencies:
+  - daml-stdlib
+  - daml-script

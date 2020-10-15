@@ -1,0 +1,42 @@
+
+{-# LANGUAGE ApplicativeDo #-}
+
+module Ticket where
+
+import Daml.Script
+import DA.Text
+
+template Distribution
+  with
+    fromDistributor: Party
+    toDistributor: Party
+    event: Text
+    tickets: Int
+
+  where
+    
+    signatory fromDistributor
+
+    ensure (tickets > 0) && ((DA.Text.length (DA.Text.trim event)) > 0)
+
+ticketTest : Script ()
+ticketTest = script do
+  
+  -- Parties
+  fromDistributor <- allocateParty "TicketMaster"
+  toDistributor <- allocateParty "TicketSlave"
+  
+  -- Valid Case
+  submit fromDistributor do 
+    createCmd Distribution with fromDistributor, toDistributor, event = "State opening", tickets = 1000 
+  
+  -- Tickets must be positive
+  submitMustFail fromDistributor do 
+    createCmd Distribution with fromDistributor, toDistributor, event = "An Event", tickets = 0 
+  
+  -- Event must be not be empty
+  submitMustFail fromDistributor do 
+    createCmd Distribution with fromDistributor, toDistributor, event = "", tickets = 100
+
+  pure()
+  

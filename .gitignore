@@ -1,7 +1,9 @@
-
 build
 logs
 .idea
 .gradle
 .DS_Store
+.daml
+*.log
+*.history
 
