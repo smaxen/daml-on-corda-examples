@@ -12,10 +12,10 @@ import java.util.UUID
 import javax.annotation.PostConstruct
 import javax.annotation.PreDestroy
 
-private const val RPC_HOST = "config.rpc.host"
-private const val RPC_PORT = "config.rpc.port"
-private const val RPC_TOKEN = "config.rpc.token"
-private const val DISTRIBUTOR = "config.distributor"
+private const val CFG_HOST = "ledger.host"
+private const val CFG_PORT = "ledger.port"
+private const val CFG_TOKEN = "ledger.token"
+private const val CFG_DISTRIBUTOR = "distributor"
 
 /**
  * Wraps a node RPC proxy.
@@ -32,13 +32,17 @@ private const val DISTRIBUTOR = "config.distributor"
 @Suppress("unused")
 @Component
 open class ClientConnection(
-  @Value("\${$RPC_HOST}") private val host: String,
-  @Value("\${$RPC_PORT}") private val port: Int,
-  @Value("\${$DISTRIBUTOR}") private val distributor: String,
-  @Value("\${$RPC_TOKEN:#{null}}") private val token: String?
+  @Value("\${$CFG_HOST}") private val host: String,
+  @Value("\${$CFG_PORT}") private val port: Int,
+  @Value("\${$CFG_DISTRIBUTOR}") private val distributor: String,
+  @Value("\${$CFG_TOKEN:#{null}}") private val token: String?
 ) {
 
     private val logger: Logger = LoggerFactory.getLogger(ClientConnection::class.java)
+
+    init {
+        logger.warn("${javaClass.simpleName} created with host: $host, port: $port, distributor: $distributor, token: $token")
+    }
 
     private lateinit var client: DamlLedgerClient
 
