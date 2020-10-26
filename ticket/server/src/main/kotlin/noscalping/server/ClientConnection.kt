@@ -54,7 +54,7 @@ open class ClientConnection(
 
     fun party(): String = distributor
 
-    fun getPeers(): List<String> = getDistributions().flatMap{listOf(it.fromDistributor, it.toDistributor)}.filterNot { it == distributor }
+    fun getPeers(): Set<String> = getDistributions().flatMap{listOf(it.fromDistributor, it.toDistributor)}.filterNot { it == distributor }.toSet()
 
     fun getDistributions(): List<Distribution> {
         val flow = client.activeContractSetClient.getActiveContracts(filterFor(Distribution.TEMPLATE_ID), false)!!

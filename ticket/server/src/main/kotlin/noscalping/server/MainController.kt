@@ -33,7 +33,7 @@ class MainController(private val client: ClientConnection) {
      * Returns all the legal names of all nodes in this Corda network.
      */
     @GetMapping(value = [ "peers" ], produces = [ APPLICATION_JSON_VALUE ])
-    fun getPeers(): Map<String, List<String>> {
+    fun getPeers(): Map<String, Set<String>> {
         return mapOf("peers" to client.getPeers())
     }
 
