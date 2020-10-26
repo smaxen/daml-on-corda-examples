@@ -16,6 +16,7 @@ template Distribution
   where
     
     signatory fromDistributor
+    observer toDistributor
 
     ensure (tickets > 0) && ((DA.Text.length (DA.Text.trim event)) > 0)
 
