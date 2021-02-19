@@ -1,0 +1,276 @@
+
+{-# LANGUAGE ApplicativeDo #-}
+
+module Versioning where
+
+import Daml.Script
+import DA.Date
+import DA.List
+import DA.Optional
+import DA.Assert
+
+--
+-- Note that this is an example code and does not take into account
+-- many practical things that would be needed for a real system.
+--
+
+data Resource = Resource
+  with
+    publisher: Party
+    name: Text
+  deriving (Eq, Show)
+
+data Version = Version
+  with
+    resource: Resource
+    identifier: Text
+    releaseDate: Date
+  deriving (Eq, Show)
+
+data Company = Company
+  with
+    owner: Party
+    name: Text
+  deriving (Eq, Show, Ord)
+
+template CompanyVersion
+  with
+    owner: Party
+    company: Company
+    version: Version
+    expiry: Optional Date
+  where
+    key (owner, company, version): (Party, Company, Version)
+    maintainer key._1
+    signatory owner
+
+    controller company.owner can
+      MarkExpiry: ContractId CompanyVersion
+        with
+          newExpiry: Optional Date
+        do  
+          create this with expiry = newExpiry
+
+    controller company.owner can
+      nonconsuming Notify: ()
+        with
+          recipient: Party
+        do  
+          existing <- lookupByKey @CompanyVersionNotification (company, version, recipient)
+          case existing of
+            Some cid -> archive cid
+            None -> pure()
+          create CompanyVersionNotification with companyVersion = this, recipient
+          pure()
+
+template CompanyVersionNotification
+  with
+    recipient: Party 
+    companyVersion: CompanyVersion
+  where  
+    key (companyVersion.company, companyVersion.version, recipient): (Company, Version, Party)
+    maintainer key._1.owner
+    signatory companyVersion.company.owner
+
+    controller recipient can
+      Accept : ()
+        do
+          existing <- lookupByKey @CompanyVersion (recipient, companyVersion.company, companyVersion.version)
+          case existing of
+            Some cid -> archive cid
+            None -> pure()
+          create companyVersion with owner = recipient
+          pure()
+
+
+lookupCompanyVersionByKey: (Party, Company, Version) -> Update (Optional CompanyVersion)
+lookupCompanyVersionByKey pcv = do
+  oCid <- lookupByKey @CompanyVersion pcv
+  o <- case oCid of 
+    Some cid -> fmap (\c -> Some c) (fetch cid)
+    None -> pure None
+  pure o
+
+isExpired: Date -> Optional Date -> Bool
+isExpired asOf o = case o of
+  Some d -> d < asOf
+  None -> False
+
+template Ops
+  with
+    party: Party
+    company: Company
+  where
+
+    signatory party  
+
+    controller party can 
+
+      nonconsuming NotifyAll : ()
+        with 
+          version: Version
+          recipients: [Party]
+        do
+          (cid, cv) <- fetchByKey @CompanyVersion (company.owner, company, version)
+          forA recipients ( \recipient -> 
+              exercise cid Notify with recipient
+            )
+          pure()
+
+      nonconsuming AcceptNotification : ()
+        with 
+          fromCompany: Company
+          version: Version
+        do
+          (cid, cvn) <- fetchByKey @CompanyVersionNotification (fromCompany, version, party)
+          exercise cid Accept
+          pure()
+
+      nonconsuming AddVersion : ()
+        with 
+          version: Version
+        do
+          create CompanyVersion with owner = company.owner, company, version, expiry = None
+          pure()
+
+      nonconsuming MarkVersionExpiry : ()
+        with 
+          version: Version
+          newExpiry: Optional Date
+        do
+          (cid, cv) <- fetchByKey @CompanyVersion (company.owner, company, version)
+          exercise cid MarkExpiry with ..
+          pure()
+
+
+      -- Best version means the version with the latest release date which is supported by all
+      -- companies on the asOf date
+      nonconsuming BestVersion : Optional Version
+        with 
+          companies: [Company]
+          versions: [Version]
+          asOf: Date
+        do
+          let companies_ = dedup (company :: companies) 
+          let sorted = (sortOn (Down . (\v -> v.releaseDate)) versions)
+          support: [(Version, [Optional CompanyVersion])] <- 
+            forA sorted (\v -> 
+              fmap (\l -> (v, l)) (
+                forA companies_ (\c -> 
+                  lookupCompanyVersionByKey (party, c, v)
+                )
+              )
+            )
+          let complete: [(Version, [CompanyVersion])] = mapOptional (\ (v, l) -> fmap (\ x -> (v, x)) (sequence l)) support
+          let completeAsOf = filter (\(_, l) -> isNone (findIndex (\x -> isExpired asOf x.expiry) l)) complete
+          pure (listToOptional $ fmap fst completeAsOf)
+
+
+allocateOps: Text -> Text -> Script (Party, Company, ContractId Ops)
+allocateOps partyName companyName = do
+  party <- allocateParty partyName
+  let company = Company with owner=party, name=companyName
+  cid <- submit party do createCmd Ops with party, company
+  pure (party, company, cid)
+
+
+test: Script()
+test = do
+    
+  -- Initialization
+
+  oscar <- allocateParty "Oscar"
+
+  (elon, tesla, teslaOps) <- allocateOps "Elon" "Tesla"
+  (bill, microsoft, microsoftOps) <- allocateOps "Bill" "Microsoft"
+  (jeff, amazon, amazonOps) <- allocateOps "Jeff" "Amazon"
+
+  -- To illustrate how the interactions work lets take an annotated trip through time for 
+  -- companies working with the OrderModule smart ordering contract suite.
+
+  -- The OrderModule smart contract suite is a resource published by Oscar
+  let orderModule = Resource with publisher=oscar, name="OrderModule"
+
+  -- Version 4.0 of OrderModule is released
+  let version4 = Version with resource=orderModule, identifier="v4.0", releaseDate=(date 2018 Feb 12)
+  
+  let asOf = (date 2021 Feb 17)
+
+  -- Microsoft is the first user of OrderModule and lets Amazon know they support the software
+  best0 <- submit bill do 
+    _ <- exerciseCmd microsoftOps AddVersion with version=version4
+    _ <- exerciseCmd microsoftOps NotifyAll with version=version4, recipients = [jeff] 
+    best <- exerciseCmd microsoftOps BestVersion with companies=[microsoft, amazon], versions=[version4], asOf
+    pure best
+  best0 === None          -- Amazon do not yet support OrderModule
+  
+  -- Amazon likes the look of OrderModule and accepts the Microsoft notifcation and adds it's own support for v4.0
+  best1 <- submit jeff do 
+    _ <- exerciseCmd amazonOps AcceptNotification with version=version4, fromCompany=microsoft
+    _ <- exerciseCmd amazonOps AddVersion with version=version4
+    _ <- exerciseCmd amazonOps NotifyAll with version=version4, recipients = [bill] 
+    best <- exerciseCmd amazonOps BestVersion with companies=[microsoft, amazon], versions=[version4], asOf
+    pure best
+  best1 === Some version4 -- Amazon can send a v4.0 besed OrderModule contracts to Microsoft
+
+  -- As this point Microsoft may receive version 4 OrderModule contracts from Amazon even though it has not
+  -- yet accepted Amazon's notification.  This is fine as act of notifying Amazon only occurred after  
+  -- support for OrderModule v4.0 was live.  As part of that workflow the messags sent to and from between
+  -- these companies would be v4.0 messages.  Let's accept the notifiaciton so we have a record that 
+  -- Amazon supports v4.0.
+
+  best2 <- submit bill do 
+    _ <- exerciseCmd microsoftOps AcceptNotification with version=version4, fromCompany=amazon
+    best <- exerciseCmd microsoftOps BestVersion with companies=[microsoft, amazon], versions=[version4], asOf
+    pure best
+  best2 === Some version4 -- Amazon 
+
+  -- Version 5.0 of OrderModule is released
+  let version5 = Version with resource=orderModule, identifier="v5.0", releaseDate=(date 2019 Mar 22)
+
+  -- Tesla also want to use OrderModule and adds support for both v4.0 and v5.0
+  submit elon do 
+    _ <- exerciseCmd teslaOps AddVersion with version=version4
+    _ <- exerciseCmd teslaOps AddVersion with version=version5
+    _ <- exerciseCmd teslaOps NotifyAll with version=version4, recipients = [jeff] 
+    _ <- exerciseCmd teslaOps NotifyAll with version=version5, recipients = [jeff] 
+    pure ()
+
+  -- Amazon accepts Tesla's notifications
+  best3 <- submit jeff do 
+    _ <- exerciseCmd amazonOps AcceptNotification with version=version4, fromCompany=tesla
+    _ <- exerciseCmd amazonOps AcceptNotification with version=version5, fromCompany=tesla
+    best <- exerciseCmd amazonOps BestVersion with companies=[tesla, amazon], versions=[version4, version5], asOf
+    pure best
+  best3 === Some version4 -- Best is v4.0 as Amazon has not you added v5.0 support 
+
+  -- Amazon adds v5.0 support
+  best4 <- submit jeff do 
+    _ <- exerciseCmd amazonOps AddVersion with version=version5
+    _ <- exerciseCmd amazonOps NotifyAll with version=version4, recipients = [elon, bill]
+    best <- exerciseCmd amazonOps BestVersion with companies=[tesla, amazon], versions=[version4, version5], asOf
+    pure best
+  best4 === Some version5 -- The latest is chosen by default
+
+  -- Tesla's policy is to decommission legacy versions six months after release of new version
+  let teslaV4DecommisionDate = addDays version5.releaseDate 180
+  submit elon do 
+    _ <- exerciseCmd teslaOps MarkVersionExpiry with version=version4, newExpiry = Some teslaV4DecommisionDate
+    _ <- exerciseCmd teslaOps NotifyAll with version=version4, recipients = [jeff, bill]
+    pure ()
+
+  -- Microsoft can still use v4.0 up until that date ...
+  best5 <- submit bill do 
+    _ <- exerciseCmd microsoftOps AcceptNotification with version=version4, fromCompany=tesla
+    best <- exerciseCmd microsoftOps BestVersion with companies=[microsoft, tesla], versions=[version4, version5], asOf=(subtractDays teslaV4DecommisionDate 1)
+    pure best
+  best5 === Some version4 -- Still OK
+
+  -- ... but after that date not version will be available
+  best6 <- submit bill do 
+    exerciseCmd microsoftOps BestVersion with companies=[microsoft, tesla], versions=[version4, version5], asOf=(addDays teslaV4DecommisionDate 1)
+  best6 === None -- better upgrade before then
+
+  pure ()
+
+

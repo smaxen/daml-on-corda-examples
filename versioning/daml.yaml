@@ -1,0 +1,13 @@
+sdk-version: 1.10.0
+name: versioning
+source: daml
+parties:
+  - Alice
+  - Bob
+version: 0.0.1
+build-options:
+  - --target=1.11
+dependencies:
+  - daml-stdlib
+  - daml-script
+
